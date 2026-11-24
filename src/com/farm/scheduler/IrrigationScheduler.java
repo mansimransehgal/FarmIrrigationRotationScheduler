@@ -27,19 +27,25 @@ public class IrrigationScheduler {
     private int allocationCounter = 1;
 
     // Register a field in HashMap
-    public void registerField(Field field) {
 
-        if (fields.containsKey(field.getFieldId())) {
-            System.out.println("Field ID already exists.");
-            return;
-        }
+public synchronized void registerField(Field field) {
 
-        fields.put(field.getFieldId(), field);
-
-        System.out.println(
-                field.getFieldName() + " registered successfully."
-        );
+    if (field == null) {
+        System.out.println("Cannot register an empty field.");
+        return;
     }
+
+    if (fields.containsKey(field.getFieldId())) {
+        System.out.println("Error: Field ID already exists.");
+        return;
+    }
+
+    fields.put(field.getFieldId(), field);
+
+    System.out.println(
+            field.getFieldName() + " registered successfully."
+    );
+}
 
     // Retrieve a field using its ID
     public Field getField(String fieldId) {
@@ -47,33 +53,83 @@ public class IrrigationScheduler {
     }
 
     // Add irrigation request
-    public void addRequest(IrrigationRequest request) {
 
-        String fieldId = request.getField().getFieldId();
+public synchronized void addRequest(IrrigationRequest request) {
 
-        if (!fields.containsKey(fieldId)) {
-            System.out.println("Field not registered: " + fieldId);
+    if (request == null) {
+        System.out.println("Invalid irrigation request.");
+        return;
+    }
+
+    String fieldId = request.getField().getFieldId();
+
+    if (!fields.containsKey(fieldId)) {
+        System.out.println("Field is not registered: " + fieldId);
+        return;
+    }
+
+    // Check for duplicate request ID
+    for (IrrigationRequest existing : requestQueue) {
+
+        if (existing.getRequestId().equals(request.getRequestId())) {
+            System.out.println("Duplicate request ID.");
+            return;
+        }
+    }
+
+    // Also check previously allocated requests
+    for (Allocation allocation : allocations) {
+
+        if (allocation.getRequest().getRequestId()
+                .equals(request.getRequestId())) {
+
+            System.out.println("Request already exists.");
+            return;
+        }
+    }
+
+    requestQueue.offer(request);
+
+    System.out.println(
+            "Request " + request.getRequestId()
+            + " added successfully."
+    );
+}
+
+
+    // Add time slot
+
+public synchronized void addTimeSlot(TimeSlot slot) {
+
+    if (slot == null) {
+        System.out.println("Invalid time slot.");
+        return;
+    }
+
+    for (TimeSlot existing : timeSlots) {
+
+        if (existing.getSlotId().equals(slot.getSlotId())) {
+            System.out.println("Duplicate time slot ID.");
             return;
         }
 
-        requestQueue.offer(request);
-
-        System.out.println(
-                "Request " + request.getRequestId()
-                + " added successfully."
-        );
+        if (existing.overlaps(slot)) {
+            System.out.println(
+                    "Cannot add slot " + slot.getSlotId()
+                    + ": Time overlaps with " + existing.getSlotId()
+            );
+            return;
+        }
     }
 
-    // Add time slot
-    public void addTimeSlot(TimeSlot slot) {
+    timeSlots.add(slot);
 
-        timeSlots.add(slot);
+    System.out.println(
+            "Time slot " + slot.getSlotId()
+            + " added successfully."
+    );
+}
 
-        System.out.println(
-                "Time slot " + slot.getSlotId()
-                + " added successfully."
-        );
-    }
 
     // Display pending requests
     public void displayPendingRequests() {

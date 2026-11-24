@@ -14,7 +14,17 @@ public class TimeSlot {
     public TimeSlot(String slotId, LocalTime startTime,
                     LocalTime endTime) {
 
-        this.slotId = slotId;
+        if (slotId == null || slotId.trim().isEmpty())
+            throw new IllegalArgumentException("Slot ID cannot be empty.");
+
+        if (startTime == null || endTime == null)
+            throw new IllegalArgumentException("Time cannot be null.");
+
+        if (!startTime.isBefore(endTime))
+            throw new IllegalArgumentException(
+                    "Start time must be before end time.");
+
+        this.slotId = slotId.trim();
         this.startTime = startTime;
         this.endTime = endTime;
         this.available = true;
@@ -42,14 +52,20 @@ public class TimeSlot {
         this.available = available;
     }
 
+    // Check whether two time slots overlap
+    public boolean overlaps(TimeSlot other) {
+
+        return this.startTime.isBefore(other.endTime)
+                && other.startTime.isBefore(this.endTime);
+    }
+
     // Display slot information
     public void displaySlot() {
 
         System.out.println("Slot ID: " + slotId);
-        System.out.println("Time: " + startTime
-                           + " - " + endTime);
+        System.out.println("Time: " + startTime + " - " + endTime);
 
         System.out.println("Status: "
-                           + (available ? "AVAILABLE" : "BOOKED"));
+                + (available ? "AVAILABLE" : "BOOKED"));
     }
 }
