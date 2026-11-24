@@ -14,3 +14,5 @@ Thumbs.db
 # Sensitive configuration
 .env
 config.properties
+# Database credentials
+db.properties
