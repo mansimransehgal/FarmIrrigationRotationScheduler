@@ -3,50 +3,76 @@ package com.farm.scheduler;
 
 import java.util.*;
 
-import java.util.ArrayList;
-import com.farm.model.Field;
-import com.farm.model.IrrigationRequest;
-import com.farm.model.TimeSlot;
-import com.farm.model.Allocation;
+import com.farm.model.*;
 
 public class IrrigationScheduler {
-	
-	private double dailyWaterLimit = 2000;
 
-	private double allocatedWater = 0;
+    // HashMap: Store fields using their unique IDs
+    private Map<String, Field> fields = new HashMap<>();
 
-	private int allocationCounter = 1;
-
-    // Queue to store irrigation requests
+    // Queue: Store pending irrigation requests
     private Queue<IrrigationRequest> requestQueue =
             new LinkedList<>();
 
     // Store available time slots
-    private List<TimeSlot> timeSlots =
-            new ArrayList<>();
+    private List<TimeSlot> timeSlots = new ArrayList<>();
 
-    // Store completed allocations
-    private List<Allocation> allocations =
-            new ArrayList<>();
+    // Store successful allocations
+    private List<Allocation> allocations = new ArrayList<>();
 
-    // Register an irrigation request
+    // Water management
+    private double dailyWaterLimit = 2000;
+    private double allocatedWater = 0;
+
+    private int allocationCounter = 1;
+
+    // Register a field in HashMap
+    public void registerField(Field field) {
+
+        if (fields.containsKey(field.getFieldId())) {
+            System.out.println("Field ID already exists.");
+            return;
+        }
+
+        fields.put(field.getFieldId(), field);
+
+        System.out.println(
+                field.getFieldName() + " registered successfully."
+        );
+    }
+
+    // Retrieve a field using its ID
+    public Field getField(String fieldId) {
+        return fields.get(fieldId);
+    }
+
+    // Add irrigation request
     public void addRequest(IrrigationRequest request) {
+
+        String fieldId = request.getField().getFieldId();
+
+        if (!fields.containsKey(fieldId)) {
+            System.out.println("Field not registered: " + fieldId);
+            return;
+        }
 
         requestQueue.offer(request);
 
-        System.out.println("Request "
-                + request.getRequestId()
-                + " added successfully.");
+        System.out.println(
+                "Request " + request.getRequestId()
+                + " added successfully."
+        );
     }
 
-    // Add an available time slot
+    // Add time slot
     public void addTimeSlot(TimeSlot slot) {
 
         timeSlots.add(slot);
 
-        System.out.println("Time slot "
-                + slot.getSlotId()
-                + " added successfully.");
+        System.out.println(
+                "Time slot " + slot.getSlotId()
+                + " added successfully."
+        );
     }
 
     // Display pending requests
@@ -58,13 +84,12 @@ public class IrrigationScheduler {
 
             System.out.println(
                     request.getRequestId()
-                    + " - "
-                    + request.getPriority()
+                    + " - " + request.getPriority()
             );
         }
     }
 
-    // Display available time slots
+    // Display available slots
     public void displayAvailableSlots() {
 
         System.out.println("\n=== AVAILABLE TIME SLOTS ===");
@@ -77,127 +102,147 @@ public class IrrigationScheduler {
             }
         }
     }
-    
 
- // Process requests according to priority
- public void processRequestsByPriority() {
+    // Display priority order
+    public void processRequestsByPriority() {
 
-     // Copy queue into a list
-     List<IrrigationRequest> sortedRequests =
-             new ArrayList<>(requestQueue);
+        List<IrrigationRequest> sortedRequests =
+                new ArrayList<>(requestQueue);
 
-     // Sort using our custom Comparator
-     sortedRequests.sort(new PriorityComparator());
+        sortedRequests.sort(new PriorityComparator());
 
-     System.out.println("\n=== PRIORITY-BASED REQUEST ORDER ===");
+        System.out.println("\n=== PRIORITY ORDER ===");
 
-     for (IrrigationRequest request : sortedRequests) {
+        for (IrrigationRequest request : sortedRequests) {
 
-         System.out.println(
-                 request.getRequestId()
-                 + " - "
-                 + request.getPriority()
-         );
-     }
- }
- 
+            System.out.println(
+                    request.getRequestId()
+                    + " - " + request.getPriority()
+            );
+        }
+    }
 
-//Allocate available time slots to irrigation requests
-public void allocateSlots() {
+    // Allocate irrigation slots
+    public void allocateSlots() {
 
-  List<IrrigationRequest> sortedRequests =
-          new ArrayList<>(requestQueue);
+        List<IrrigationRequest> sortedRequests =
+                new ArrayList<>(requestQueue);
 
-  // Sort requests according to priority
-  sortedRequests.sort(new PriorityComparator());
+        sortedRequests.sort(new PriorityComparator());
 
-  System.out.println("\n=== IRRIGATION ALLOCATION ===");
+        // Keep only requests that could not be allocated
+        Queue<IrrigationRequest> pendingRequests =
+                new LinkedList<>();
 
-  for (IrrigationRequest request : sortedRequests) {
+        System.out.println("\n=== IRRIGATION ALLOCATION ===");
 
-      boolean allocated = false;
+        for (IrrigationRequest request : sortedRequests) {
 
-      double requiredWater =
-              request.getField().getWaterRequirement();
+            boolean allocated = false;
 
-      // Check daily water availability
-      if (allocatedWater + requiredWater > dailyWaterLimit) {
+            double requiredWater =
+                    request.getField().getWaterRequirement();
 
-          System.out.println(
-                  request.getRequestId()
-                  + " cannot be allocated: Insufficient water."
-          );
+            // Check water availability
+            if (allocatedWater + requiredWater > dailyWaterLimit) {
 
-          continue;
-      }
+                System.out.println(
+                        request.getRequestId()
+                        + " remains PENDING: Insufficient water."
+                );
 
-      // Find an available time slot
-      for (TimeSlot slot : timeSlots) {
+                pendingRequests.offer(request);
+                continue;
+            }
 
-          if (slot.isAvailable()) {
+            // Find an available slot
+            for (TimeSlot slot : timeSlots) {
 
-              // Mark slot as booked
-              slot.setAvailable(false);
+                if (slot.isAvailable()) {
 
-              // Create allocation
-              Allocation allocation = new Allocation(
-                      "A" + allocationCounter++,
-                      request,
-                      slot,
-                      requiredWater
-              );
+                    slot.setAvailable(false);
 
-              allocations.add(allocation);
+                    Allocation allocation = new Allocation(
+                            "A" + allocationCounter++,
+                            request,
+                            slot,
+                            requiredWater
+                    );
 
-              // Update water consumption
-              allocatedWater += requiredWater;
+                    allocations.add(allocation);
 
-              // Update request status
-              request.setStatus("APPROVED");
+                    allocatedWater += requiredWater;
 
-              allocated = true;
+                    request.setStatus("APPROVED");
 
-              System.out.println(
-                      request.getRequestId()
-                      + " allocated successfully."
-              );
+                    allocated = true;
 
-              allocation.displayAllocation();
+                    System.out.println(
+                            request.getRequestId()
+                            + " allocated successfully."
+                    );
 
-              System.out.println();
+                    allocation.displayAllocation();
 
-              break;
-          }
-      }
+                    System.out.println();
 
-      if (!allocated) {
+                    break;
+                }
+            }
 
-          System.out.println(
-                  request.getRequestId()
-                  + " remains PENDING: No available time slot."
-          );
-      }
-  }
-}
+            if (!allocated) {
 
-//Display total water consumption
-public void displayWaterUsage() {
+                System.out.println(
+                        request.getRequestId()
+                        + " remains PENDING: No available slot."
+                );
 
-  System.out.println("\n=== DAILY WATER USAGE ===");
+                pendingRequests.offer(request);
+            }
+        }
 
-  System.out.println(
-          "Daily Water Limit: " + dailyWaterLimit + " litres"
-  );
+        // Replace queue with requests still pending
+        requestQueue = pendingRequests;
+    }
 
-  System.out.println(
-          "Allocated Water: " + allocatedWater + " litres"
-  );
+    // Display water usage
+    public void displayWaterUsage() {
 
-  System.out.println(
-          "Remaining Water: "
-          + (dailyWaterLimit - allocatedWater) + " litres"
-  );
-}
+        System.out.println("\n=== DAILY WATER USAGE ===");
 
+        System.out.println(
+                "Daily Limit: " + dailyWaterLimit + " litres"
+        );
 
+        System.out.println(
+                "Allocated: " + allocatedWater + " litres"
+        );
+
+        System.out.println(
+                "Remaining: "
+                + (dailyWaterLimit - allocatedWater) + " litres"
+        );
+    }
+
+    // Display all allocations
+    public void displayAllocations() {
+
+        System.out.println("\n=== ALL ALLOCATIONS ===");
+
+        for (Allocation allocation : allocations) {
+            allocation.displayAllocation();
+            System.out.println();
+        }
+    }
+
+    // Display registered fields
+    public void displayRegisteredFields() {
+
+        System.out.println("\n=== REGISTERED FIELDS ===");
+
+        for (Field field : fields.values()) {
+            field.displayFieldDetails();
+            System.out.println();
+        }
+    }
 }
