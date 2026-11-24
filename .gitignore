@@ -1,0 +1,16 @@
+
+# Compiled Java files
+*.class
+bin/
+
+# Eclipse temporary files
+.metadata/
+*.log
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Sensitive configuration
+.env
+config.properties
