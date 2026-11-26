@@ -1,18 +1,14 @@
+# Database credentials
+db.properties
 
-# Compiled Java files
+# Java compiled files
 *.class
 bin/
 
-# Eclipse temporary files
-.metadata/
+# Eclipse files
+.settings/
+.classpath
+.project
+
+# Temporary files
 *.log
-
-# Operating system files
-.DS_Store
-Thumbs.db
-
-# Sensitive configuration
-.env
-config.properties
-# Database credentials
-db.properties

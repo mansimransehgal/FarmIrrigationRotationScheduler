@@ -2,134 +2,221 @@
 package com.farm.scheduler;
 
 import java.util.*;
+import java.time.LocalDate;
+import java.util.stream.Collectors;
 
 import com.farm.model.*;
+import com.farm.database.*;
 
 public class IrrigationScheduler {
 
-    // HashMap: Store fields using their unique IDs
+    // In-memory collections
     private Map<String, Field> fields = new HashMap<>();
 
-    // Queue: Store pending irrigation requests
-    private Queue<IrrigationRequest> requestQueue =
-            new LinkedList<>();
+    private Map<String, IrrigationRequest> requests = new HashMap<>();
 
-    // Store available time slots
+    private Queue<IrrigationRequest> requestQueue = new LinkedList<>();
+
     private List<TimeSlot> timeSlots = new ArrayList<>();
 
-    // Store successful allocations
+    private Map<String, TimeSlot> slots = new HashMap<>();
+
     private List<Allocation> allocations = new ArrayList<>();
 
-    // Water management
+    // Track water consumption separately for each date
+    private Map<LocalDate, Double> dailyWaterUsage = new HashMap<>();
+
+    // Database access objects
+    private FieldDAO fieldDAO = new FieldDAO();
+    private RequestDAO requestDAO = new RequestDAO();
+    private TimeSlotDAO timeSlotDAO = new TimeSlotDAO();
+    private AllocationDAO allocationDAO = new AllocationDAO();
+
     private double dailyWaterLimit = 2000;
-    private double allocatedWater = 0;
 
-    private int allocationCounter = 1;
-
-    // Register a field in HashMap
-
-public synchronized void registerField(Field field) {
-
-    if (field == null) {
-        System.out.println("Cannot register an empty field.");
-        return;
+    // Automatically load database records
+    public IrrigationScheduler() {
+        loadExistingData();
     }
 
-    if (fields.containsKey(field.getFieldId())) {
-        System.out.println("Error: Field ID already exists.");
-        return;
+    // Load existing records from MySQL
+    private synchronized void loadExistingData() {
+
+        System.out.println("\n=== LOADING DATABASE DATA ===");
+
+        // Load fields
+        List<Field> savedFields = fieldDAO.getAllFields();
+
+        for (Field field : savedFields) {
+            fields.put(field.getFieldId(), field);
+        }
+
+        System.out.println("Fields loaded: " + fields.size());
+
+        // Load requests
+        List<IrrigationRequest> savedRequests =
+                requestDAO.getAllRequests(fields);
+
+        for (IrrigationRequest request : savedRequests) {
+
+            requests.put(request.getRequestId(), request);
+
+            if (request.getStatus().equals("PENDING")) {
+                requestQueue.offer(request);
+            }
+        }
+
+        System.out.println("Requests loaded: " + requests.size());
+
+        // Load time slots
+        timeSlots = timeSlotDAO.getAllTimeSlots();
+
+        for (TimeSlot slot : timeSlots) {
+            slots.put(slot.getSlotId(), slot);
+        }
+
+        // Sort slots by date and start time
+        timeSlots.sort(
+            Comparator.comparing(TimeSlot::getSlotDate)
+                      .thenComparing(TimeSlot::getStartTime)
+        );
+
+        System.out.println("Time slots loaded: " + timeSlots.size());
+
+        // Load allocations
+        allocations = allocationDAO.getAllAllocations(
+                requests, slots
+        );
+
+        // Calculate water usage for each date
+        dailyWaterUsage = allocations.stream()
+            .collect(Collectors.groupingBy(
+                Allocation::getAllocationDate,
+                Collectors.summingDouble(
+                    Allocation::getAllocatedWater
+                )
+            ));
+
+        System.out.println("Allocations loaded: " + allocations.size());
+
+        System.out.println("Today's water usage: "
+                + getWaterUsage(LocalDate.now()) + " litres");
+
+        System.out.println("=== DATABASE LOADING COMPLETE ===\n");
     }
 
-    fields.put(field.getFieldId(), field);
+    // Register field
+    public synchronized void registerField(Field field) {
 
-    System.out.println(
-            field.getFieldName() + " registered successfully."
-    );
-}
+        if (field == null) {
+            System.out.println("Invalid field.");
+            return;
+        }
 
-    // Retrieve a field using its ID
-    public Field getField(String fieldId) {
+        if (fields.containsKey(field.getFieldId())) {
+            System.out.println("Field ID already exists.");
+            return;
+        }
+
+        if (fieldDAO.saveField(field)) {
+
+            fields.put(field.getFieldId(), field);
+
+            System.out.println(
+                field.getFieldName() + " registered successfully."
+            );
+
+        } else {
+            System.out.println("Field registration failed.");
+        }
+    }
+
+    public synchronized Field getField(String fieldId) {
         return fields.get(fieldId);
     }
 
     // Add irrigation request
+    public synchronized void addRequest(IrrigationRequest request) {
 
-public synchronized void addRequest(IrrigationRequest request) {
+        if (request == null) {
+            System.out.println("Invalid irrigation request.");
+            return;
+        }
 
-    if (request == null) {
-        System.out.println("Invalid irrigation request.");
-        return;
-    }
+        String fieldId = request.getField().getFieldId();
 
-    String fieldId = request.getField().getFieldId();
+        if (!fields.containsKey(fieldId)) {
+            System.out.println("Field is not registered: " + fieldId);
+            return;
+        }
 
-    if (!fields.containsKey(fieldId)) {
-        System.out.println("Field is not registered: " + fieldId);
-        return;
-    }
-
-    // Check for duplicate request ID
-    for (IrrigationRequest existing : requestQueue) {
-
-        if (existing.getRequestId().equals(request.getRequestId())) {
+        if (requests.containsKey(request.getRequestId())) {
             System.out.println("Duplicate request ID.");
             return;
         }
-    }
 
-    // Also check previously allocated requests
-    for (Allocation allocation : allocations) {
+        if (requestDAO.saveRequest(request)) {
 
-        if (allocation.getRequest().getRequestId()
-                .equals(request.getRequestId())) {
+            requests.put(request.getRequestId(), request);
+            requestQueue.offer(request);
 
-            System.out.println("Request already exists.");
-            return;
+            System.out.println(
+                "Request " + request.getRequestId()
+                + " added successfully."
+            );
+
+        } else {
+            System.out.println("Request could not be added.");
         }
     }
 
-    requestQueue.offer(request);
-
-    System.out.println(
-            "Request " + request.getRequestId()
-            + " added successfully."
-    );
-}
-
-
     // Add time slot
+    public synchronized void addTimeSlot(TimeSlot slot) {
 
-public synchronized void addTimeSlot(TimeSlot slot) {
+        if (slot == null) {
+            System.out.println("Invalid time slot.");
+            return;
+        }
 
-    if (slot == null) {
-        System.out.println("Invalid time slot.");
-        return;
-    }
-
-    for (TimeSlot existing : timeSlots) {
-
-        if (existing.getSlotId().equals(slot.getSlotId())) {
+        if (slots.containsKey(slot.getSlotId())) {
             System.out.println("Duplicate time slot ID.");
             return;
         }
 
-        if (existing.overlaps(slot)) {
-            System.out.println(
-                    "Cannot add slot " + slot.getSlotId()
-                    + ": Time overlaps with " + existing.getSlotId()
+        for (TimeSlot existing : timeSlots) {
+
+            if (existing.overlaps(slot)) {
+                System.out.println(
+                    "Time slot overlaps with " + existing.getSlotId()
+                );
+                return;
+            }
+        }
+
+        if (timeSlotDAO.saveTimeSlot(slot)) {
+
+            timeSlots.add(slot);
+            slots.put(slot.getSlotId(), slot);
+
+            timeSlots.sort(
+                Comparator.comparing(TimeSlot::getSlotDate)
+                          .thenComparing(TimeSlot::getStartTime)
             );
-            return;
+
+            System.out.println(
+                "Time slot " + slot.getSlotId()
+                + " added successfully."
+            );
+
+        } else {
+            System.out.println("Time slot could not be added.");
         }
     }
 
-    timeSlots.add(slot);
-
-    System.out.println(
-            "Time slot " + slot.getSlotId()
-            + " added successfully."
-    );
-}
-
+    // Get water consumption for a particular date
+    public synchronized double getWaterUsage(LocalDate date) {
+        return dailyWaterUsage.getOrDefault(date, 0.0);
+    }
 
     // Display pending requests
     public void displayPendingRequests() {
@@ -137,15 +224,13 @@ public synchronized void addTimeSlot(TimeSlot slot) {
         System.out.println("\n=== PENDING REQUESTS ===");
 
         for (IrrigationRequest request : requestQueue) {
-
             System.out.println(
-                    request.getRequestId()
-                    + " - " + request.getPriority()
+                request.getRequestId() + " - " + request.getPriority()
             );
         }
     }
 
-    // Display available slots
+    // Display available time slots
     public void displayAvailableSlots() {
 
         System.out.println("\n=== AVAILABLE TIME SLOTS ===");
@@ -159,7 +244,7 @@ public synchronized void addTimeSlot(TimeSlot slot) {
         }
     }
 
-    // Display priority order
+    // Process requests according to priority
     public void processRequestsByPriority() {
 
         List<IrrigationRequest> sortedRequests =
@@ -170,23 +255,20 @@ public synchronized void addTimeSlot(TimeSlot slot) {
         System.out.println("\n=== PRIORITY ORDER ===");
 
         for (IrrigationRequest request : sortedRequests) {
-
             System.out.println(
-                    request.getRequestId()
-                    + " - " + request.getPriority()
+                request.getRequestId() + " - " + request.getPriority()
             );
         }
     }
 
-    // Allocate irrigation slots
-    public void allocateSlots() {
+    // Allocate time slots
+    public synchronized void allocateSlots() {
 
         List<IrrigationRequest> sortedRequests =
                 new ArrayList<>(requestQueue);
 
         sortedRequests.sort(new PriorityComparator());
 
-        // Keep only requests that could not be allocated
         Queue<IrrigationRequest> pendingRequests =
                 new LinkedList<>();
 
@@ -199,49 +281,71 @@ public synchronized void addTimeSlot(TimeSlot slot) {
             double requiredWater =
                     request.getField().getWaterRequirement();
 
-            // Check water availability
-            if (allocatedWater + requiredWater > dailyWaterLimit) {
-
-                System.out.println(
-                        request.getRequestId()
-                        + " remains PENDING: Insufficient water."
-                );
-
-                pendingRequests.offer(request);
-                continue;
-            }
-
-            // Find an available slot
+            // Find a suitable available slot
             for (TimeSlot slot : timeSlots) {
 
-                if (slot.isAvailable()) {
+                if (!slot.isAvailable()) {
+                    continue;
+                }
 
-                    slot.setAvailable(false);
+                LocalDate allocationDate = slot.getSlotDate();
 
-                    Allocation allocation = new Allocation(
-                            "A" + allocationCounter++,
-                            request,
-                            slot,
-                            requiredWater
-                    );
+                double currentUsage =
+                        getWaterUsage(allocationDate);
+
+                // Check daily water limit for this date
+                if (currentUsage + requiredWater > dailyWaterLimit) {
+                    continue;
+                }
+
+                String allocationId = "A"
+                        + UUID.randomUUID()
+                        .toString().substring(0, 8);
+
+                Allocation allocation = new Allocation(
+                        allocationId,
+                        request,
+                        slot,
+                        requiredWater
+                );
+
+                boolean saved =
+                        allocationDAO.saveAllocation(allocation);
+
+                if (saved) {
 
                     allocations.add(allocation);
 
-                    allocatedWater += requiredWater;
+                    dailyWaterUsage.put(
+                        allocationDate,
+                        currentUsage + requiredWater
+                    );
+
+                    slot.setAvailable(false);
 
                     request.setStatus("APPROVED");
 
                     allocated = true;
 
                     System.out.println(
-                            request.getRequestId()
-                            + " allocated successfully."
+                        request.getRequestId()
+                        + " allocated successfully."
                     );
 
                     allocation.displayAllocation();
 
                     System.out.println();
 
+                } else {
+
+                    System.out.println(
+                        request.getRequestId()
+                        + " could not be allocated to slot "
+                        + slot.getSlotId()
+                    );
+                }
+
+                if (allocated) {
                     break;
                 }
             }
@@ -249,35 +353,31 @@ public synchronized void addTimeSlot(TimeSlot slot) {
             if (!allocated) {
 
                 System.out.println(
-                        request.getRequestId()
-                        + " remains PENDING: No available slot."
+                    request.getRequestId()
+                    + " remains PENDING: No suitable slot or water available."
                 );
 
                 pendingRequests.offer(request);
             }
         }
 
-        // Replace queue with requests still pending
         requestQueue = pendingRequests;
     }
 
-    // Display water usage
+    // Display daily water usage
     public void displayWaterUsage() {
+
+        LocalDate today = LocalDate.now();
+
+        double used = getWaterUsage(today);
 
         System.out.println("\n=== DAILY WATER USAGE ===");
 
-        System.out.println(
-                "Daily Limit: " + dailyWaterLimit + " litres"
-        );
-
-        System.out.println(
-                "Allocated: " + allocatedWater + " litres"
-        );
-
-        System.out.println(
-                "Remaining: "
-                + (dailyWaterLimit - allocatedWater) + " litres"
-        );
+        System.out.println("Date: " + today);
+        System.out.println("Daily Limit: " + dailyWaterLimit + " litres");
+        System.out.println("Allocated: " + used + " litres");
+        System.out.println("Remaining: "
+                + (dailyWaterLimit - used) + " litres");
     }
 
     // Display all allocations
@@ -300,5 +400,18 @@ public synchronized void addTimeSlot(TimeSlot slot) {
             field.displayFieldDetails();
             System.out.println();
         }
+    }
+
+    // Get copies of collections
+    public List<Allocation> getAllocations() {
+        return new ArrayList<>(allocations);
+    }
+
+    public List<IrrigationRequest> getPendingRequests() {
+        return new ArrayList<>(requestQueue);
+    }
+
+    public List<Field> getRegisteredFields() {
+        return new ArrayList<>(fields.values());
     }
 }

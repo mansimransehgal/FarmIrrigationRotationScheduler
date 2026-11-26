@@ -1,16 +1,13 @@
-
 package com.farm.database;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
+import java.sql.*;
+import java.util.*;
 
 import com.farm.model.Field;
 
 public class FieldDAO {
 
-    public void saveField(Field field) {
-
+    public boolean saveField(Field field) {
         String sql = """
                 INSERT INTO fields
                 (field_id, field_name, area, water_requirement, priority)
@@ -27,11 +24,40 @@ public class FieldDAO {
             stmt.setString(5, field.getPriority());
 
             stmt.executeUpdate();
-
-            System.out.println("Field saved to MySQL successfully!");
+            System.out.println("Field saved successfully!");
+            return true;
 
         } catch (SQLException e) {
-            System.out.println("Failed to save field: " + e.getMessage());
+            System.out.println("Field save failed: " + e.getMessage());
+            return false;
         }
     }
-}
+
+    public List<Field> getAllFields() {
+        List<Field> fields = new ArrayList<>();
+
+        String sql = "SELECT * FROM fields";
+
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                Field field = new Field(
+                    rs.getString("field_id"),
+                    rs.getString("field_name"),
+                    rs.getDouble("area"),
+                    rs.getDouble("water_requirement"),
+                    rs.getString("priority")
+                );
+
+                fields.add(field);
+            }
+
+        } catch (SQLException e) {
+            System.out.println("Could not load fields: " + e.getMessage());
+        }
+
+        return fields;
+    }
+}	

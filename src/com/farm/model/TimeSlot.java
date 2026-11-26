@@ -1,6 +1,7 @@
 
 package com.farm.model;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
 
 public class TimeSlot {
@@ -8,11 +9,19 @@ public class TimeSlot {
     private String slotId;
     private LocalTime startTime;
     private LocalTime endTime;
+    private LocalDate slotDate;
     private boolean available;
 
-    // Constructor
+    // Constructor for a slot scheduled today
     public TimeSlot(String slotId, LocalTime startTime,
                     LocalTime endTime) {
+
+        this(slotId, startTime, endTime, LocalDate.now());
+    }
+
+    // Constructor with a specific date
+    public TimeSlot(String slotId, LocalTime startTime,
+                    LocalTime endTime, LocalDate slotDate) {
 
         if (slotId == null || slotId.trim().isEmpty())
             throw new IllegalArgumentException("Slot ID cannot be empty.");
@@ -24,13 +33,16 @@ public class TimeSlot {
             throw new IllegalArgumentException(
                     "Start time must be before end time.");
 
+        if (slotDate == null)
+            throw new IllegalArgumentException("Slot date cannot be null.");
+
         this.slotId = slotId.trim();
         this.startTime = startTime;
         this.endTime = endTime;
+        this.slotDate = slotDate;
         this.available = true;
     }
 
-    // Getters
     public String getSlotId() {
         return slotId;
     }
@@ -43,26 +55,29 @@ public class TimeSlot {
         return endTime;
     }
 
+    public LocalDate getSlotDate() {
+        return slotDate;
+    }
+
     public boolean isAvailable() {
         return available;
     }
 
-    // Update availability
     public void setAvailable(boolean available) {
         this.available = available;
     }
 
-    // Check whether two time slots overlap
     public boolean overlaps(TimeSlot other) {
 
-        return this.startTime.isBefore(other.endTime)
+        return this.slotDate.equals(other.slotDate)
+                && this.startTime.isBefore(other.endTime)
                 && other.startTime.isBefore(this.endTime);
     }
 
-    // Display slot information
     public void displaySlot() {
 
         System.out.println("Slot ID: " + slotId);
+        System.out.println("Date: " + slotDate);
         System.out.println("Time: " + startTime + " - " + endTime);
 
         System.out.println("Status: "
